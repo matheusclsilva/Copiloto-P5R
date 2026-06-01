@@ -29,11 +29,13 @@ O **Copiloto P5R** é um assistente inteligente e automatizado para o jogo *Pers
 
 Abra o terminal na pasta do projeto e execute um dos comandos abaixo:
 
-- **Iniciar com Interface Gráfica (Recomendado):**
+- **Iniciar de forma Invisível (Sem Janela Preta - Recomendado):**
+  Dê um duplo-clique no arquivo `Iniciar_Copiloto.vbs`. O programa rodará 100% em segundo plano, aparecendo apenas o ícone na bandeja do sistema e o Overlay no seu jogo!
+
+- **Iniciar pelo Terminal (Para depuração):**
   ```bash
   python main.py
   ```
-  Isso abrirá a janela flutuante e o ícone na bandeja do sistema.
 
 - **Diagnóstico do Sistema:**
   ```bash

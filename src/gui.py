@@ -17,8 +17,23 @@ from html import escape
 import sys
 from typing import Optional
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
 from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPixmap
+import ctypes
+from ctypes import wintypes
+import threading
+
+def _native_hotkey_thread(signal_emitter):
+    user32 = ctypes.windll.user32
+    if not user32.RegisterHotKey(None, 1, 0x0000, 0x78):
+        print("Aviso: Não foi possível registrar o atalho F9.")
+        return
+    msg = wintypes.MSG()
+    while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
+        if msg.message == 0x0312:
+            signal_emitter.toggle.emit()
+        user32.TranslateMessage(ctypes.byref(msg))
+        user32.DispatchMessageW(ctypes.byref(msg))
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -137,20 +152,12 @@ class AiWorker(QThread):
 from .schedule import KIND_COLOR, KIND_LABEL
 
 
-def _task_line_html(task: dict) -> str:
+def _task_line_html(task: dict, for_overlay: bool = False) -> str:
     """Formata uma tarefa como linha HTML colorida pela categoria."""
     kind = task.get("kind", "normal")
     color = KIND_COLOR.get(kind, "#222222")
-    label = KIND_LABEL.get(kind, "")
-    tag = f"<b>[{label}]</b> " if label else ""
-    text = (task.get("text") or "").replace("<", "&lt;").replace(">", "&gt;")
-    return f'<div style="color:{color}; margin:2px 0;">• {tag}{text}</div>'
-
-
-def _task_line_html(task: dict) -> str:
-    """Formata uma tarefa como linha HTML colorida pela categoria."""
-    kind = task.get("kind", "normal")
-    color = KIND_COLOR.get(kind, "#222222")
+    if for_overlay:
+        color = "#ffffff"
     label = KIND_LABEL.get(kind, "")
     tag = f"<b>[{label}]</b> " if label else ""
     text = escape(task.get("text") or "")
@@ -158,6 +165,79 @@ def _task_line_html(task: dict) -> str:
         f'<div style="color:{color}; margin:4px 0; line-height:1.35; '
         f'font-size:10.5pt;">&#8226; {tag}{text}</div>'
     )
+
+
+class OverlayWindow(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.setFixedSize(400, 450)
+        self.move(screen.width() - 420, 40)
+        
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        self.frame = QFrame()
+        self.frame.setStyleSheet("""
+            QFrame {
+                background-color: rgba(0, 0, 0, 200);
+                border-radius: 8px;
+            }
+            QLabel {
+                color: white;
+                background: transparent;
+                font-family: "Segoe UI", sans-serif;
+                font-size: 11pt;
+            }
+        """)
+        
+        frame_lay = QVBoxLayout(self.frame)
+        frame_lay.setContentsMargins(15, 15, 15, 15)
+        
+        self.header = QLabel("📅 — | 💾 —")
+        self.header.setStyleSheet("font-weight: bold; font-size: 11pt; color: #f1c40f;")
+        
+        self.now_label = QLabel("✅ AGORA:")
+        self.now_label.setStyleSheet("font-weight: bold; color: #2ecc71;")
+        self.now_text = QLabel("—")
+        self.now_text.setWordWrap(True)
+        self.now_text.setTextFormat(Qt.TextFormat.RichText)
+        
+        self.warn_label = QLabel("⚠️ Avisos:")
+        self.warn_label.setStyleSheet("font-weight: bold; color: #e74c3c;")
+        self.warn_text = QLabel("—")
+        self.warn_text.setWordWrap(True)
+        self.warn_text.setTextFormat(Qt.TextFormat.RichText)
+        
+        frame_lay.addWidget(self.header)
+        frame_lay.addWidget(self.now_label)
+        frame_lay.addWidget(self.now_text)
+        frame_lay.addWidget(self.warn_label)
+        frame_lay.addWidget(self.warn_text)
+        frame_lay.addStretch(1)
+        
+        self.scroll.setWidget(self.frame)
+        lay.addWidget(self.scroll)
+
+    def render(self, header_text, now_title, now_html, warn_title, warn_html):
+        self.header.setText(header_text)
+        self.now_label.setText(now_title)
+        self.now_text.setText(now_html)
+        self.warn_label.setText(warn_title)
+        self.warn_text.setText(warn_html)
 
 
 class SettingsDialog(QDialog):
@@ -327,6 +407,8 @@ class MainWindow(QWidget):
         self._worker: Optional[RefreshWorker] = None
         self._ai_worker: Optional[AiWorker] = None
 
+        self.overlay = OverlayWindow()
+
         self.setWindowTitle("Platinum Assistant - P5R")
         self.setMinimumSize(500, 520)
         self.resize(520, 560)
@@ -397,17 +479,20 @@ class MainWindow(QWidget):
         self.btn_ai = QPushButton("IA")
         self.btn_ai.setToolTip("Perguntar à DeepSeek (opcional, ~13s)")
         self.btn_ai.setFixedWidth(48)
+        self.btn_overlay = QPushButton("Overlay")
         self.btn_cfg = QPushButton("⚙")
         self.btn_cfg.setFixedWidth(42)
         self.btn_refresh.clicked.connect(self.refresh)
         self.btn_plan.clicked.connect(self._show_plan)
         self.btn_progress.clicked.connect(self._show_progress)
         self.btn_ai.clicked.connect(self.ask_ai)
+        self.btn_overlay.clicked.connect(self.toggle_overlay)
         self.btn_cfg.clicked.connect(self._show_settings)
         btns.addWidget(self.btn_refresh)
         btns.addWidget(self.btn_plan)
         btns.addWidget(self.btn_progress)
         btns.addWidget(self.btn_ai)
+        btns.addWidget(self.btn_overlay)
         btns.addWidget(self.btn_cfg)
         root.addLayout(btns)
 
@@ -436,6 +521,15 @@ class MainWindow(QWidget):
         self.tray.show()
 
     # ---- acoes ---------------------------------------------------------
+    def toggle_overlay(self) -> None:
+        if self.overlay.isVisible():
+            self.overlay.hide()
+            self.btn_overlay.setStyleSheet("")
+        else:
+            self.overlay.show()
+            self.btn_overlay.setStyleSheet("background-color: #2ecc71; color: white;")
+            self._render()
+
     def refresh(self) -> None:
         # Atualizacao rapida: le memoria + lookup local do guia (sem API).
         if self._worker is not None and self._worker.isRunning():
@@ -556,6 +650,32 @@ class MainWindow(QWidget):
         color = self.controller.tray_color()
         self.tray.setIcon(_color_icon(color))
 
+        if self.overlay.isVisible():
+            now_html_overlay = ""
+            if entry is None or not st.schedule_period:
+                now_html_overlay = '<div style="color:white; margin:4px 0;">Sem ações para este período.</div>'
+            else:
+                now_html_overlay = "".join(_task_line_html(t, for_overlay=True) for t in st.schedule_period)
+                
+            warn_html_overlay = ""
+            crit_html_overlay = [_task_line_html(t, for_overlay=True) for t in st.schedule_critical]
+            for m in st.upcoming[:3]:
+                u = m.get("urgency_days")
+                when = f"em {u}d" if u is not None else ""
+                crit_html_overlay.append(
+                    f'<div style="color:#f1c40f; margin:2px 0;">• {m.get("month")}/'
+                    f'{m.get("day")} {when}: {m.get("message")}</div>'
+                )
+            warn_html_overlay = "".join(crit_html_overlay) if crit_html_overlay else '<div style="color:white;">Nada crítico.</div>'
+            
+            self.overlay.render(
+                self.header.text(),
+                self.now_label.text(),
+                now_html_overlay,
+                self.warn_label.text(),
+                warn_html_overlay
+            )
+
     def _show_plan(self) -> None:
         """Plano completo do dia (Day + Night) direto do guia, com cores."""
         st = self.controller.status
@@ -649,6 +769,9 @@ class MainWindow(QWidget):
         # Fechar minimiza para a tray em vez de encerrar.
         event.ignore()
         self.hide()
+        if self.overlay.isVisible():
+            self.overlay.hide()
+            self.btn_overlay.setStyleSheet("")
         self.tray.showMessage(
             "Platinum Assistant",
             "Continua rodando na bandeja. Clique no icone para reabrir.",
@@ -656,6 +779,9 @@ class MainWindow(QWidget):
             2000,
         )
 
+
+class HotkeySignals(QObject):
+    toggle = pyqtSignal()
 
 def run_gui() -> int:
     app = QApplication(sys.argv)
@@ -665,10 +791,18 @@ def run_gui() -> int:
 
     controller = Controller()
     window = MainWindow(controller)
-    window.show()
+    # A janela principal fica oculta por padrao, o app vive na system tray
+    # window.show()
+    
+    # Abre o overlay por padrao na inicializacao
+    window.toggle_overlay()
+
+    # Registra o atalho global F9 via API nativa do Windows
+    hk_signals = HotkeySignals()
+    hk_signals.toggle.connect(window.toggle_overlay)
+    threading.Thread(target=_native_hotkey_thread, args=(hk_signals,), daemon=True).start()
 
     # Inicia watcher + leitura inicial em background.
-    import threading
     threading.Thread(target=lambda: controller.start(
         on_update=lambda _c: window.update_signal.emit()
     ), daemon=True).start()
