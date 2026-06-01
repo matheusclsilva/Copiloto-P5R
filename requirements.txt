@@ -1,0 +1,5 @@
+openai>=1.30.0
+watchdog>=3.0.0
+psutil>=5.9.0
+PyQt6>=6.5.0
+pycryptodome>=3.20.0

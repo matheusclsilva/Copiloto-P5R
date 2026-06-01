@@ -1,0 +1,7 @@
+[
+  {"month": 4, "day": 18, "type": "confidant", "message": "Ultima chance de iniciar Confidant da Kawakami antes da janela fechar temporariamente"},
+  {"month": 5, "day": 7,  "type": "stat",      "message": "Knowledge nivel 3 necessario para avancar Confidant da Makoto - verifique seu progresso"},
+  {"month": 6, "day": 5,  "type": "missable",  "message": "NAO pule o evento apos a aula - ativa Confidant da Ann"},
+  {"month": 11, "day": 17, "type": "missable", "message": "CRITICO: Aceite o pedido do Maruki - recusar causa bad ending e perde trofeu"},
+  {"month": 12, "day": 24, "type": "missable", "message": "CRITICO: Nao confirme o retorno ainda - necessario para true ending e trofeu Royal"}
+]

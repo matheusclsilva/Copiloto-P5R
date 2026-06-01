@@ -1,0 +1,21 @@
+# Segredos e estado local — nunca versionar
+config.json
+session_state.json
+
+# Arquivos de save do jogo — nunca versionar
+*.dat
+*.DAT
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

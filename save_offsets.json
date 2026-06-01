@@ -1,0 +1,17 @@
+{
+  "_doc": [
+    "Offsets DENTRO do save P5R decriptado (DATA.DAT). Sao offsets de FORMATO DE",
+    "ARQUIVO — fixos, sem ASLR, sobrevivem a reiniciar o jogo. Mapeados por diff de",
+    "dois saves reais (DATA01=4/15, DATA02=4/21).",
+    "  data_block.* = offset no bloco de dados do jogo (DecodedSave.data).",
+    "  header_period_field = campo do header usado como periodo (via PERIOD_NAMES).",
+    "  date_crosscheck = formula day_counter->data, usada so como verificacao."
+  ],
+  "data_block": {
+    "month": { "offset": "0x17059", "type": "u8" },
+    "day":   { "offset": "0x1705A", "type": "u8" }
+  },
+  "header_period_field": "time",
+  "date_crosscheck": { "base_date": "2016-04-09", "base_counter": 8 },
+  "_verified": { "month_day": true, "period": false }
+}
